@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Find the best Burger King near you</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: linear-gradient(135deg, #d62300, #ff8c00);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      flex-shrink: 0;
+    }
+
+    .bk-crown {
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      line-height: 1.2;
+    }
+
+    header p {
+      font-size: 0.72rem;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+
+    /* Collapsible legend */
+    .legend-toggle {
+      display: none;
+      width: 100%;
+      background: #fff;
+      border: none;
+      border-top: 1px solid #ddd;
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      color: #444;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+
+    .legend-toggle::after {
+      content: ' ▾';
+      float: right;
+      transition: transform 0.2s;
+    }
+
+    .legend-toggle.open::after {
+      transform: rotate(180deg);
+    }
+
+    .legend {
+      background: #fff;
+      border-top: 1px solid #ddd;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      color: #333;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .legend-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .legend-dot.excellent { background: #2ecc40; border-color: #27ae60; }
+    .legend-dot.good      { background: #ff8c00; border-color: #e67e00; }
+    .legend-dot.poor      { background: #888; border-color: #666; opacity: 0.45; }
+
+    .threshold-note {
+      margin-left: auto;
+      color: #777;
+      font-size: 0.75rem;
+    }
+
+    #map {
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Leaflet zoom control — move away from bottom edge on mobile */
+    .leaflet-bottom.leaflet-right {
+      bottom: env(safe-area-inset-bottom, 0);
+    }
+
+    /* Custom marker styles */
+    .bk-marker {
+      border-radius: 50%;
+      border: 2.5px solid rgba(255,255,255,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.7rem;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      transition: transform 0.15s, box-shadow 0.15s;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .bk-marker:hover {
+      transform: scale(1.18);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.7);
+    }
+
+    .bk-marker.excellent { background: radial-gradient(circle at 40% 35%, #4be05a, #1a8a27); }
+    .bk-marker.good      { background: radial-gradient(circle at 40% 35%, #ffaa33, #d46200); }
+    .bk-marker.poor      { background: radial-gradient(circle at 40% 35%, #aaa, #555); opacity: 0.45; }
+
+    .leaflet-popup-content-wrapper {
+      background: #fff;
+      color: #222;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+    }
+
+    .leaflet-popup-tip { background: #fff; }
+    .leaflet-popup-close-button { color: #666 !important; }
+
+    .popup-inner { min-width: min(220px, 80vw); padding: 4px 2px; }
+
+    .popup-name {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #ff8c00;
+    }
+
+    .popup-address {
+      font-size: 0.78rem;
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .popup-score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .popup-score-badge {
+      font-size: 1.6rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .popup-score-badge.excellent { color: #2ecc40; }
+    .popup-score-badge.good      { color: #ff8c00; }
+    .popup-score-badge.poor      { color: #999; }
+
+    .popup-stars { font-size: 1rem; letter-spacing: 1px; }
+    .popup-review-count { font-size: 0.75rem; color: #777; }
+
+    .popup-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .tag {
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      padding: 2px 9px;
+      font-size: 0.7rem;
+      color: #444;
+    }
+
+    .popup-reviews { border-top: 1px solid #eee; padding-top: 8px; }
+
+    .review {
+      margin-bottom: 8px;
+      font-size: 0.75rem;
+      color: #444;
+      font-style: italic;
+    }
+
+    .review-author {
+      font-style: normal;
+      font-weight: 600;
+      color: #ff8c00;
+      margin-right: 4px;
+    }
+
+    .review-stars { color: #f4c542; margin-right: 4px; }
+
+    /* ── Nearby callout ── */
+    #nearby {
+      position: absolute;
+      bottom: 24px;
+      left: 16px;
+      z-index: 1000;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      border: 1px solid #e0e0e0;
+      width: 280px;
+      overflow: hidden;
+      transition: transform 0.25s, opacity 0.25s;
+    }
+
+    #nearby.hidden { display: none; }
+
+    .nearby-header {
+      background: linear-gradient(135deg, #d62300, #ff8c00);
+      color: #fff;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .nearby-header-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .nearby-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .nearby-subtitle {
+      font-size: 0.68rem;
+      opacity: 0.88;
+    }
+
+    .nearby-close {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 4px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+
+    .nearby-close:hover { opacity: 1; }
+
+    .nearby-loading {
+      padding: 16px;
+      font-size: 0.82rem;
+      color: #777;
+      text-align: center;
+    }
+
+    .nearby-list { padding: 8px 0; }
+
+    .nearby-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    .nearby-item:hover { background: #faf5f0; }
+
+    .nearby-rank {
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: #aaa;
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .nearby-dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .nearby-dot.excellent { background: radial-gradient(circle at 40% 35%, #4be05a, #1a8a27); }
+    .nearby-dot.good      { background: radial-gradient(circle at 40% 35%, #ffaa33, #d46200); }
+    .nearby-dot.poor      { background: radial-gradient(circle at 40% 35%, #aaa, #555); opacity: 0.55; }
+
+    .nearby-info { flex: 1; min-width: 0; }
+
+    .nearby-name {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #222;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .nearby-meta {
+      font-size: 0.7rem;
+      color: #888;
+      margin-top: 1px;
+    }
+
+    .nearby-none {
+      padding: 14px 12px;
+      font-size: 0.8rem;
+      color: #888;
+      text-align: center;
+    }
+
+    #locateBtn {
+      position: absolute;
+      bottom: 24px;
+      right: 16px;
+      z-index: 1000;
+      background: #fff;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      width: 40px;
+      height: 40px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    #locateBtn:hover { border-color: #ff8c00; background: #fff8f0; }
+
+    @media (max-width: 600px) {
+      #nearby { width: calc(100vw - 32px); bottom: 16px; left: 16px; }
+      #locateBtn { bottom: 16px; right: 16px; }
+    }
+
+    @media (max-width: 600px) {
+      .legend-toggle { display: block; }
+      .legend { display: none; padding: 10px 16px 12px; }
+      .legend.open { display: flex; }
+      .threshold-note { margin-left: 0; width: 100%; }
+      .leaflet-popup-content-wrapper { max-width: 88vw !important; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="bk-crown">👑</div>
+  <div>
+    <h1>Well-Reviewed Burger King — Texas</h1>
+    <p>All locations clickable · Color indicates score tier</p>
+  </div>
+</header>
+
+<button class="legend-toggle" id="legendToggle">Legend</button>
+<div class="legend" id="legend">
+  <div class="legend-item">
+    <div class="legend-dot excellent">4.5</div>
+    <span>Excellent (4.5–5.0)</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot good">4.1</div>
+    <span>Good (4.0–4.4)</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot poor">3.2</div>
+    <span>Below threshold (&lt;4.0) — lower rated</span>
+  </div>
+  <div class="threshold-note">Well-reviewed threshold: ≥ 4.0 stars</div>
+</div>
+
+<div id="map"></div>
+
+<!-- Nearby callout -->
+<div id="nearby" class="hidden">
+  <div class="nearby-header">
+    <div class="nearby-header-left">
+      <span>📍</span>
+      <div>
+        <div class="nearby-title">Top 3 Near You</div>
+        <div class="nearby-subtitle">Within 25 miles · sorted by score</div>
+      </div>
+    </div>
+    <button class="nearby-close" id="nearbyClose" title="Dismiss">✕</button>
+  </div>
+  <div id="nearbyBody"><div class="nearby-loading">Locating you…</div></div>
+</div>
+
+<!-- Locate button -->
+<button id="locateBtn" title="Find nearest Burger Kings">📍</button>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="locations.js"></script>
+<script>
+  const map = L.map('map', {
+    center: [31.0, -99.5],
+    zoom: 6,
+    zoomControl: true,
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  const THRESHOLD = 4.0;
+
+  function getCategory(score) {
+    if (score >= 4.5) return 'excellent';
+    if (score >= THRESHOLD) return 'good';
+    return 'poor';
+  }
+
+  function starsHtml(score) {
+    const full = Math.floor(score);
+    const half = score - full >= 0.25 && score - full < 0.75;
+    const empty = 5 - full - (half ? 1 : 0);
+    return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty);
+  }
+
+  function buildPopup(loc) {
+    const cat = getCategory(loc.score);
+    const tags = (loc.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+    const reviews = (loc.reviews || []).map(r =>
+      `<div class="review">
+        <span class="review-stars">${starsHtml(r.stars)}</span>
+        <span class="review-author">${r.author}:</span>${r.text}
+       </div>`
+    ).join('');
+
+    return `<div class="popup-inner">
+      <div class="popup-name">🍔 ${loc.name}</div>
+      <div class="popup-address">📍 ${loc.address}</div>
+      <div class="popup-score-row">
+        <div class="popup-score-badge ${cat}">${loc.score.toFixed(1)}</div>
+        <div>
+          <div class="popup-stars" style="color:#f4c542">${starsHtml(loc.score)}</div>
+          <div class="popup-review-count">${loc.reviewCount.toLocaleString()} reviews</div>
+        </div>
+      </div>
+      ${tags ? `<div class="popup-tags">${tags}</div>` : ''}
+      ${reviews ? `<div class="popup-reviews">${reviews}</div>` : ''}
+    </div>`;
+  }
+
+  // ── Nearby logic ──────────────────────────────────────────────
+  const NEARBY_MILES = 25;
+  const nearbyEl   = document.getElementById('nearby');
+  const nearbyBody = document.getElementById('nearbyBody');
+  const locateBtn  = document.getElementById('locateBtn');
+  let userMarker   = null;
+
+  function haversineMiles(lat1, lng1, lat2, lng2) {
+    const R = 3958.8; // Earth radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+              Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function showNearby(userLat, userLng) {
+    // Place / move user marker
+    if (userMarker) userMarker.remove();
+    const userIcon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width:16px;height:16px;border-radius:50%;
+        background:#4a90e2;border:3px solid #fff;
+        box-shadow:0 0 0 3px rgba(74,144,226,0.35);">
+      </div>`,
+      iconSize: [16,16], iconAnchor: [8,8]
+    });
+    userMarker = L.marker([userLat, userLng], { icon: userIcon, interactive: false }).addTo(map);
+
+    // Find locations within 25 miles, sort by score desc
+    const nearby = locations
+      .map(loc => ({ ...loc, miles: haversineMiles(userLat, userLng, loc.lat, loc.lng) }))
+      .filter(loc => loc.miles <= NEARBY_MILES)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    nearbyEl.classList.remove('hidden');
+
+    if (nearby.length === 0) {
+      nearbyBody.innerHTML = `<div class="nearby-none">No Burger King locations found within ${NEARBY_MILES} miles.</div>`;
+      return;
+    }
+
+    nearbyBody.innerHTML = `<div class="nearby-list">${nearby.map((loc, i) => {
+      const cat = getCategory(loc.score);
+      const shortName = loc.name.replace('Burger King – ', '');
+      return `<div class="nearby-item" data-lat="${loc.lat}" data-lng="${loc.lng}">
+        <div class="nearby-rank">#${i+1}</div>
+        <div class="nearby-dot ${cat}">${loc.score.toFixed(1)}</div>
+        <div class="nearby-info">
+          <div class="nearby-name">${shortName}</div>
+          <div class="nearby-meta">${loc.miles.toFixed(1)} mi · ${loc.reviewCount.toLocaleString()} reviews</div>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+
+    // Click a row → fly to marker and open popup
+    nearbyBody.querySelectorAll('.nearby-item').forEach(row => {
+      row.addEventListener('click', () => {
+        const lat = parseFloat(row.dataset.lat);
+        const lng = parseFloat(row.dataset.lng);
+        map.flyTo([lat, lng], 14, { duration: 1 });
+      });
+    });
+  }
+
+  function locate() {
+    if (!navigator.geolocation) {
+      nearbyEl.classList.remove('hidden');
+      nearbyBody.innerHTML = `<div class="nearby-none">Geolocation is not supported by your browser.</div>`;
+      return;
+    }
+    nearbyEl.classList.remove('hidden');
+    nearbyBody.innerHTML = `<div class="nearby-loading">Locating you…</div>`;
+    navigator.geolocation.getCurrentPosition(
+      pos => showNearby(pos.coords.latitude, pos.coords.longitude),
+      () => {
+        nearbyBody.innerHTML = `<div class="nearby-none">Location access denied. Enable location permissions and try again.</div>`;
+      },
+      { timeout: 10000 }
+    );
+  }
+
+  locateBtn.addEventListener('click', locate);
+  document.getElementById('nearbyClose').addEventListener('click', () => nearbyEl.classList.add('hidden'));
+
+  // Auto-request on load
+  locate();
+
+  // ── Legend toggle for mobile
+  const legendToggle = document.getElementById('legendToggle');
+  const legendEl = document.getElementById('legend');
+  legendToggle.addEventListener('click', () => {
+    const open = legendEl.classList.toggle('open');
+    legendToggle.classList.toggle('open', open);
+    legendToggle.textContent = open ? 'Legend' : 'Legend';
+  });
+
+  // Larger markers on small screens for easier tapping
+  const isMobile = window.innerWidth <= 600;
+
+  locations.forEach(loc => {
+    const cat = getCategory(loc.score);
+    const baseSize = cat === 'excellent' ? 42 : cat === 'good' ? 38 : 32;
+    const size = isMobile ? baseSize + 10 : baseSize;
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="bk-marker ${cat}" style="width:${size}px;height:${size}px">${loc.score.toFixed(1)}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
+      popupAnchor: [0, -size/2 - 4]
+    });
+
+    const marker = L.marker([loc.lat, loc.lng], { icon, interactive: true });
+    marker.addTo(map);
+    const popupWidth = Math.min(300, window.innerWidth - 40);
+    marker.bindPopup(buildPopup(loc), { maxWidth: popupWidth, minWidth: Math.min(240, popupWidth) });
+  });
+</script>
+</body>
+</html>
